@@ -40,6 +40,7 @@ class MonlamMelongFinetuningController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        $question = trim((string) $request->get('question', ''));
 
         // Admin and Chief Editor can see all entries
         if ($user->isAdmin() || $user->isChiefEditor()) {
@@ -49,6 +50,9 @@ class MonlamMelongFinetuningController extends Controller
                 })
                 ->when($request->status, function($query) use ($request) {
                     return $query->where('status', $request->status);
+                })
+                ->when($question !== '', function($query) use ($question) {
+                    return $query->where('question', 'like', '%' . $question . '%');
                 })
                 ->when($request->author && $request->user()->isAdmin(), function($query) use ($request) {
                     return $query->where('user_id', $request->author);
@@ -65,6 +69,9 @@ class MonlamMelongFinetuningController extends Controller
                 })
                 ->when($request->status, function($query) use ($request) {
                     return $query->where('status', $request->status);
+                })
+                ->when($question !== '', function($query) use ($question) {
+                    return $query->where('question', 'like', '%' . $question . '%');
                 })
                 ->when($request->author && $request->user()->isAdmin(), function($query) use ($request) {
                     return $query->where('user_id', $request->author);
@@ -92,6 +99,11 @@ class MonlamMelongFinetuningController extends Controller
             // Apply status filter if provided
             if ($request->status) {
                 $query->where('status', $request->status);
+            }
+
+            // Apply question search if provided
+            if ($question !== '') {
+                $query->where('question', 'like', '%' . $question . '%');
             }
             
             // Apply author filter if provided and user is admin
@@ -123,7 +135,8 @@ class MonlamMelongFinetuningController extends Controller
             'category' => $request->category,
             'status' => $request->status,
             'author' => $request->author,
-            'hasFilters' => $request->has('category') || $request->has('status') || $request->has('author')
+            'question' => $question !== '' ? $question : null,
+            'hasFilters' => ($request->has('category') || $request->has('status') || $request->has('author') || $question !== '')
         ];
 
         // If this is an AJAX request for authors, return JSON data
@@ -405,6 +418,7 @@ class MonlamMelongFinetuningController extends Controller
     public function reviewQueue(Request $request)
     {
         $user = Auth::user();
+        $question = trim((string) $request->get('question', ''));
 
         // Only admin, chief editors, and reviewers can access review queue
         if (!$user->canReviewContent()) {
@@ -417,6 +431,9 @@ class MonlamMelongFinetuningController extends Controller
             ->when($request->category, function($query) use ($request) {
                 return $query->where('category', $request->category);
             })
+            ->when($question !== '', function($query) use ($question) {
+                return $query->where('question', 'like', '%' . $question . '%');
+            })
             ->when($request->author && $user->isAdmin(), function($query) use ($request) {
                 return $query->where('user_id', $request->author);
             })
@@ -425,7 +442,7 @@ class MonlamMelongFinetuningController extends Controller
 
         // Get categories for filter
         $categories = $this->getUniqueCategories();
-        
+
         // Get unique authors for the filter (only for admins)
         // If a category is selected, only show authors who have pending entries in that category
         $authors = collect();
@@ -448,7 +465,8 @@ class MonlamMelongFinetuningController extends Controller
         $filters = [
             'category' => $request->category,
             'author' => $request->author,
-            'hasFilters' => $request->has('category') || $request->has('author')
+            'question' => $question !== '' ? $question : null,
+            'hasFilters' => ($request->has('category') || $request->has('author') || $question !== '')
         ];
 
         // If this is an AJAX request for authors, return JSON data
@@ -545,7 +563,7 @@ class MonlamMelongFinetuningController extends Controller
         if ($entry->user_id === $user->id && $user->canAccessCategory($entry->category)) {
             // Allow editing if status is not approved/rejected
             if (!in_array($entry->status, ['approved', 'rejected'])) {
-                return true;
+            return true;
             }
             
             // Allow editing if within 10-minute window for approved/rejected entries
