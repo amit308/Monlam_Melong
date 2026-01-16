@@ -47,6 +47,11 @@
                                             {{ __('Author') }}: {{ $author->name ?? 'Unknown' }}
                                         </span>
                                     @endif
+                                    @if(!empty($filters['question']))
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+                                            {{ __('དྲི་བ།') }}: {{ Str::limit($filters['question'], 40) }}
+                                        </span>
+                                    @endif
                                 </div>
                                 <a href="{{ route('entries.index') }}" class="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
                                     {{ __('Clear All') }}
@@ -56,6 +61,10 @@
                         @endif
                         
                         <form action="{{ route('entries.index') }}" method="GET" class="flex items-end gap-4 flex-wrap">
+                            <div class="min-w-[260px]">
+                                <label for="question" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('དྲི་བ།') }} (Question)</label>
+                                <input type="text" name="question" id="question" value="{{ request('question') }}" class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="{{ __('Search question...') }}" />
+                            </div>
                             <div>
                                 <label for="category" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('སྡེ་ཚན།') }} (Category)</label>
                                 <select name="category" id="category" class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
