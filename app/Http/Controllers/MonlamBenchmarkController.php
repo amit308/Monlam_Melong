@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MonlamBenchmark;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -19,10 +20,17 @@ class MonlamBenchmarkController extends Controller
         $filters = [
             'subject' => trim((string) $request->get('subject', '')),
             'author' => trim((string) $request->get('author', '')),
+            'date_from' => trim((string) $request->get('date_from', '')),
+            'date_to' => trim((string) $request->get('date_to', '')),
         ];
 
         // Track if any filters are active for UI
-        $filters['hasFilters'] = ($filters['subject'] !== '' || $filters['author'] !== '');
+        $filters['hasFilters'] = (
+            $filters['subject'] !== ''
+            || $filters['author'] !== ''
+            || $filters['date_from'] !== ''
+            || $filters['date_to'] !== ''
+        );
 
         if ($filters['subject'] !== '') {
             $query->where('subject', 'like', '%' . $filters['subject'] . '%');
@@ -32,6 +40,18 @@ class MonlamBenchmarkController extends Controller
             $query->where(function ($q) use ($filters) {
                 $q->where('created_by', 'like', '%' . $filters['author'] . '%');
             });
+        }
+
+        $dateFrom = $filters['date_from'] !== '' ? $this->parseBenchmarkDate($filters['date_from']) : null;
+        $dateTo = $filters['date_to'] !== '' ? $this->parseBenchmarkDate($filters['date_to']) : null;
+        if ($dateFrom && $dateTo && $dateFrom->gt($dateTo)) {
+            [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+        }
+        if ($dateFrom) {
+            $query->where('created_at', '>=', $dateFrom->copy()->startOfDay());
+        }
+        if ($dateTo) {
+            $query->where('created_at', '<=', $dateTo->copy()->endOfDay());
         }
 
         $benchmarks = $query->paginate(15);
@@ -52,6 +72,15 @@ class MonlamBenchmarkController extends Controller
             ->pluck('created_by');
 
         return view('benchmark.index', compact('benchmarks', 'filters', 'subjects', 'authors'));
+    }
+
+    private function parseBenchmarkDate(string $value): ?Carbon
+    {
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

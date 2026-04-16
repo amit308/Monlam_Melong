@@ -35,6 +35,16 @@
                                             {{ __('རྩོམ་སྒྲིག་མཁན།') }}: {{ $filters['author'] }}
                                         </span>
                                     @endif
+                                    @if(($filters['date_from'] ?? '') !== '')
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                                            {{ __('ནས།') }} (From): {{ $filters['date_from'] }}
+                                        </span>
+                                    @endif
+                                    @if(($filters['date_to'] ?? '') !== '')
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200">
+                                            {{ __('བར།') }} (To): {{ $filters['date_to'] }}
+                                        </span>
+                                    @endif
                                 </div>
                                 <a href="{{ route('benchmark.index') }}" class="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
                                     {{ __('Clear All') }}
@@ -61,6 +71,14 @@
                                         <option value="{{ $authorItem }}" {{ ($filters['author'] ?? '') === $authorItem ? 'selected' : '' }}>{{ $authorItem }}</option>
                                     @endforeach
                                 </select>
+                            </div>
+                            <div>
+                                <label for="date_from" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('ནས།') }} (From)</label>
+                                <input type="date" name="date_from" id="date_from" value="{{ $filters['date_from'] ?? '' }}" max="{{ now()->toDateString() }}" class="mt-1 block w-full min-w-[160px] px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100" />
+                            </div>
+                            <div>
+                                <label for="date_to" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('བར།') }} (To)</label>
+                                <input type="date" name="date_to" id="date_to" value="{{ $filters['date_to'] ?? '' }}" max="{{ now()->toDateString() }}" class="mt-1 block w-full min-w-[160px] px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-100" />
                             </div>
                             <div class="flex space-x-2">
                                 <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:bg-indigo-700 active:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
