@@ -127,7 +127,7 @@
                                                 {{ $entry->category ?? '-' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                                {{ $entry->user->name ?? 'Unknown' }}
+                                                {{ $entry->user?->name ?? 'Unknown' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                                 {{ $entry->updated_at->diffForHumans() }}

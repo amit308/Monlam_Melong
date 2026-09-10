@@ -41,96 +41,16 @@ class MonlamMelongFinetuningController extends Controller
     {
         $user = Auth::user();
         $question = trim((string) $request->get('question', ''));
+        $entries = $this->entryListQuery($request, $user, $question)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
 
-        // Admin and Chief Editor can see all entries
-        if ($user->isAdmin() || $user->isChiefEditor()) {
-            $entries = MonlamMelongFinetuning::with('user')
-                ->when($request->category, function($query) use ($request) {
-                    return $query->where('category', $request->category);
-                })
-                ->when($request->status, function($query) use ($request) {
-                    return $query->where('status', $request->status);
-                })
-                ->when($question !== '', function($query) use ($question) {
-                    return $query->where('question', 'like', '%' . $question . '%');
-                })
-                ->when($request->author && $request->user()->isAdmin(), function($query) use ($request) {
-                    return $query->where('user_id', $request->author);
-                })
-                ->orderBy('created_at', 'desc')
-                ->paginate(10);
-        }
-        // Reviewer can see entries pending approval or approved
-        else if ($user->isReviewer()) {
-            $entries = MonlamMelongFinetuning::with('user')
-                ->whereIn('status', ['pending', 'approved', 'rejected'])
-                ->when($request->category, function($query) use ($request) {
-                    return $query->where('category', $request->category);
-                })
-                ->when($request->status, function($query) use ($request) {
-                    return $query->where('status', $request->status);
-                })
-                ->when($question !== '', function($query) use ($question) {
-                    return $query->where('question', 'like', '%' . $question . '%');
-                })
-                ->when($request->author && $request->user()->isAdmin(), function($query) use ($request) {
-                    return $query->where('user_id', $request->author);
-                })
-                ->orderBy('created_at', 'desc')
-                ->paginate(10);
-        }
-        // Editor can only see entries in their allowed categories
-        else {
-            $query = MonlamMelongFinetuning::with('user')
-                ->where('user_id', $user->id);
-            
-            // If editor has category restrictions and no specific category requested
-            if (!empty($user->allowed_categories) && !$request->category) {
-                $query->whereIn('category', $user->allowed_categories);
-            }
-            // If specific category requested, check if user can access it
-            elseif ($request->category && !$user->canAccessCategory($request->category)) {
-                abort(403, 'You do not have access to this category.');
-            }
-            elseif ($request->category) {
-                $query->where('category', $request->category);
-            }
-            
-            // Apply status filter if provided
-            if ($request->status) {
-                $query->where('status', $request->status);
-            }
-
-            // Apply question search if provided
-            if ($question !== '') {
-                $query->where('question', 'like', '%' . $question . '%');
-            }
-            
-            // Apply author filter if provided and user is admin
-            if ($request->author && $user->isAdmin()) {
-                $query->where('user_id', $request->author);
-            }
-            
-            $entries = $query->orderBy('created_at', 'desc')->paginate(10);
-        }
-
-        // Get unique categories and tags for filtering
         $categories = $this->getUniqueCategories();
         $tags = $this->getUniqueTags();
-        
-        // Get unique authors for the filter
-        // If a category is selected, only show authors who have entries in that category
-        $authorsQuery = \App\Models\User::whereHas('entries');
-        
-        if ($request->category) {
-            $authorsQuery->whereHas('entries', function($query) use ($request) {
-                $query->where('category', $request->category);
-            });
-        }
-        
-        $authors = $authorsQuery->select('id', 'name')->get();
+        $authors = $this->getFilterAuthors($request->category);
 
-        // Get current filter values
         $filters = [
             'category' => $request->category,
             'status' => $request->status,
@@ -139,10 +59,9 @@ class MonlamMelongFinetuningController extends Controller
             'hasFilters' => ($request->has('category') || $request->has('status') || $request->has('author') || $question !== '')
         ];
 
-        // If this is an AJAX request for authors, return JSON data
         if ($request->ajax() || $request->has('ajax')) {
             return response()->json([
-                'authors' => $authors->map(function($author) {
+                'authors' => $authors->map(function ($author) {
                     return [
                         'id' => $author->id,
                         'name' => $author->name
@@ -151,20 +70,24 @@ class MonlamMelongFinetuningController extends Controller
             ]);
         }
 
+        $this->rememberEntriesReturnUrl($request);
+
         return view('entries.index', compact('entries', 'categories', 'tags', 'authors', 'filters'));
     }
 
     /**
      * Display the specified entry.
      */
-    public function show(MonlamMelongFinetuning $entry)
+    public function show(Request $request, MonlamMelongFinetuning $entry)
     {
         // Check if user has permission to view this entry
         if (!$this->canViewEntry($entry)) {
             abort(403, 'You do not have permission to view this entry.');
         }
 
-        return view('entries.show', compact('entry'));
+        $backUrl = $this->entriesReturnUrl($request);
+
+        return view('entries.show', compact('entry', 'backUrl'));
     }
     
     /**
@@ -426,7 +349,9 @@ class MonlamMelongFinetuningController extends Controller
         }
 
         // Get all pending entries
-        $pendingEntries = MonlamMelongFinetuning::with('user')
+        $pendingEntries = MonlamMelongFinetuning::query()
+            ->select(['id', 'question', 'category', 'difficulty', 'user_id', 'status', 'created_at', 'updated_at'])
+            ->with(['user:id,name'])
             ->where('status', 'pending')
             ->when($request->category, function($query) use ($request) {
                 return $query->where('category', $request->category);
@@ -437,7 +362,7 @@ class MonlamMelongFinetuningController extends Controller
             ->when($request->author && $user->isAdmin(), function($query) use ($request) {
                 return $query->where('user_id', $request->author);
             })
-            ->orderBy('updated_at', 'asc') // Oldest submissions first
+            ->orderBy('updated_at', 'asc')
             ->paginate(10);
 
         // Get categories for filter
@@ -447,18 +372,7 @@ class MonlamMelongFinetuningController extends Controller
         // If a category is selected, only show authors who have pending entries in that category
         $authors = collect();
         if ($user->isAdmin()) {
-            $authorsQuery = \App\Models\User::whereHas('entries', function($query) {
-                $query->where('status', 'pending');
-            });
-            
-            if ($request->category) {
-                $authorsQuery->whereHas('entries', function($query) use ($request) {
-                    $query->where('status', 'pending')
-                          ->where('category', $request->category);
-                });
-            }
-            
-            $authors = $authorsQuery->select('id', 'name')->get();
+            $authors = $this->getFilterAuthors($request->category, 'pending');
         }
 
         // Get current filter values
@@ -480,6 +394,8 @@ class MonlamMelongFinetuningController extends Controller
                 })->toArray()
             ]);
         }
+
+        $this->rememberEntriesReturnUrl($request);
 
         return view('entries.review-queue', compact('pendingEntries', 'categories', 'authors', 'filters'));
     }
@@ -573,6 +489,117 @@ class MonlamMelongFinetuningController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Remember the last entries/review-queue URL, including filters and page.
+     */
+    private function rememberEntriesReturnUrl(Request $request): void
+    {
+        if ($request->ajax() || $request->has('ajax')) {
+            return;
+        }
+
+        if (!in_array($request->path(), ['entries', 'review-queue'], true)) {
+            return;
+        }
+
+        $request->session()->put('entries.return_url', $request->fullUrl());
+    }
+
+    /**
+     * Safe URL to return to the previous list state.
+     */
+    private function entriesReturnUrl(Request $request): string
+    {
+        $fallback = route('entries.index');
+        $returnUrl = session('entries.return_url');
+
+        if (!is_string($returnUrl) || $returnUrl === '') {
+            return $fallback;
+        }
+
+        $root = rtrim($request->root(), '/');
+        $allowed = [$root.'/entries', $root.'/review-queue'];
+
+        foreach ($allowed as $prefix) {
+            if ($returnUrl === $prefix || str_starts_with($returnUrl, $prefix.'?')) {
+                return $returnUrl;
+            }
+        }
+
+        return $fallback;
+    }
+
+    /**
+     * Lightweight listing query — avoid selecting large TEXT columns on SQLite.
+     */
+    private function entryListQuery(Request $request, $user, string $question)
+    {
+        $query = MonlamMelongFinetuning::query()
+            ->select(['id', 'question', 'category', 'difficulty', 'user_id', 'status', 'created_at'])
+            ->with(['user:id,name']);
+
+        if ($user->isAdmin() || $user->isChiefEditor()) {
+            // No extra visibility constraint.
+        } elseif ($user->isReviewer()) {
+            $query->whereIn('status', ['pending', 'approved', 'rejected']);
+        } else {
+            $query->where('user_id', $user->id);
+
+            if (!empty($user->allowed_categories) && !$request->category) {
+                $query->whereIn('category', $user->allowed_categories);
+            } elseif ($request->category && !$user->canAccessCategory($request->category)) {
+                abort(403, 'You do not have access to this category.');
+            }
+        }
+
+        return $query
+            ->when($request->category, function ($query) use ($request) {
+                return $query->where('category', $request->category);
+            })
+            ->when($request->status, function ($query) use ($request) {
+                return $query->where('status', $request->status);
+            })
+            ->when($question !== '', function ($query) use ($question) {
+                return $query->where('question', 'like', '%' . $question . '%');
+            })
+            ->when($request->author && $user->isAdmin(), function ($query) use ($request) {
+                return $query->where('user_id', $request->author);
+            });
+    }
+
+    /**
+     * Author filter options without EXISTS (select *) scans on the entries table.
+     */
+    private function getFilterAuthors($category = null, ?string $status = null)
+    {
+        if (!$category && !$status) {
+            return Cache::remember('entry_filter_authors', 600, function () {
+                return \App\Models\User::query()
+                    ->select('id', 'name')
+                    ->orderBy('name')
+                    ->get();
+            });
+        }
+
+        return \App\Models\User::query()
+            ->select('id', 'name')
+            ->whereIn('id', function ($sub) use ($category, $status) {
+                $sub->select('user_id')
+                    ->from('monlam_melong_finetuning')
+                    ->whereNotNull('user_id');
+
+                if ($category) {
+                    $sub->where('category', $category);
+                }
+
+                if ($status) {
+                    $sub->where('status', $status);
+                }
+            })
+            ->orderBy('name')
+            ->get();
     }
 
     /**
